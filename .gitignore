@@ -59,3 +59,10 @@ Makefile
 test-driver
 tests/*.log
 tests/*.trs
+
+/build32
+
+.vscode/c_cpp_properties.json
+compile
+m4/*.m4
+config.h.in
