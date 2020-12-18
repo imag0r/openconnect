@@ -960,7 +960,7 @@ static int run_hip_script(struct openconnect_info *vpninfo)
 	struct oc_text_buf *report_buf;
 	char *cmd;
 	char buf[256];
-#elif defined(__native_client)
+#elif defined(__native_client__)
 #else
 	int pipefd[2];
 	int ret;
