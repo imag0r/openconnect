@@ -954,7 +954,14 @@ out:
 
 static int run_hip_script(struct openconnect_info *vpninfo)
 {
-#if !defined(_WIN32) && !defined(__native_client__)
+#if defined(_WIN32)
+	int ret;
+	FILE* pipe;
+	struct oc_text_buf *report_buf;
+	char *cmd;
+	char buf[256];
+#elif defined(__native_client)
+#else
 	int pipefd[2];
 	int ret;
 	pid_t child;
@@ -967,7 +974,7 @@ static int run_hip_script(struct openconnect_info *vpninfo)
 				     _("WARNING: Server asked us to submit HIP report with md5sum %s.\n"
 				       "    VPN connectivity may be disabled or limited without HIP report submission.\n    %s\n"),
 				     vpninfo->csd_token,
-#if defined(_WIN32) || defined(__native_client__)
+#if defined(__native_client__)
 				     _("However, running the HIP report submission script on this platform is not yet implemented.")
 #else
 				     _("You need to provide a --csd-wrapper argument with the HIP report submission script.")
@@ -978,7 +985,7 @@ static int run_hip_script(struct openconnect_info *vpninfo)
 		return 0;
 	}
 
-#if defined(_WIN32) || defined(__native_client__)
+#if defined(__native_client__)
 	vpn_progress(vpninfo, PRG_ERR,
 		     _("Error: Running the 'HIP Report' script on this platform is not yet implemented.\n"));
 	return -EPERM;
@@ -988,6 +995,49 @@ static int run_hip_script(struct openconnect_info *vpninfo)
 		     _("Trying to run HIP Trojan script '%s'.\n"),
 		     vpninfo->csd_wrapper);
 
+#if defined(_WIN32)
+	if (asprintf(&cmd, "cscript.exe /nologo \"%s\" --cookie \"%s\" --client-ip \"%s\" --md5 \"%s\"", vpninfo->csd_wrapper, vpninfo->cookie, vpninfo->ip_info.addr, vpninfo->csd_token) == -1)
+		return -EPERM;
+
+	pipe = popen(cmd, "r");
+	if (!pipe) {
+		vpn_progress(vpninfo, PRG_ERR, _("Failed to start the HIP script\n"));
+		return -EPERM;
+	}
+
+	report_buf = buf_alloc();
+
+	buf_truncate(report_buf);
+
+	do {
+		ret = fread(buf, 1, sizeof(buf), pipe);
+		if (ret <= 0)
+			break;
+		buf_append_bytes(report_buf, buf, ret);
+	} while (ret == sizeof(buf));
+
+	ret = pclose(pipe);
+	if (ret) {
+		vpn_progress(vpninfo, PRG_ERR,
+						_("HIP script '%s' returned non-zero status: %d\n"),
+						vpninfo->csd_wrapper, ret);
+		ret = -EINVAL;
+	} else {
+		vpn_progress(vpninfo, PRG_INFO,
+					_("HIP script '%s' completed successfully (report is %d bytes).\n"),
+					vpninfo->csd_wrapper, report_buf->pos);
+
+		ret = check_or_submit_hip_report(vpninfo, report_buf->data);
+		if (ret < 0)
+			vpn_progress(vpninfo, PRG_ERR, _("HIP report submission failed.\n"));
+		else {
+			vpn_progress(vpninfo, PRG_INFO, _("HIP report submitted successfully.\n"));
+			ret = 0;
+		}
+	}
+	buf_free(report_buf);
+	return ret;
+#else
 #ifdef __linux__
 	if (pipe2(pipefd, O_CLOEXEC))
 #endif
@@ -1073,8 +1123,8 @@ static int run_hip_script(struct openconnect_info *vpninfo)
 				 _("Failed to exec HIP script %s\n"), hip_argv[0]);
 		exit(1);
 	}
-
-#endif /* !_WIN32 && !__native_client__ */
+#endif
+#endif /* !__native_client__ */
 }
 
 static int check_and_maybe_submit_hip_report(struct openconnect_info *vpninfo)
