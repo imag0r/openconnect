@@ -534,7 +534,7 @@ int script_config_tun(struct openconnect_info *vpninfo, const char *reason)
 
 	if (CreateProcessW(NULL, script_w, NULL, NULL, FALSE, cpflags,
 			   script_env, NULL, &si, &pi)) {
-		ret = WaitForSingleObject(pi.hProcess,10000);
+		ret = WaitForSingleObject(pi.hProcess,120000);
 		CloseHandle(pi.hThread);
 		CloseHandle(pi.hProcess);
 		if (ret == WAIT_TIMEOUT)
